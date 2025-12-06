@@ -24,7 +24,6 @@ def repetition_ratio(text):
         return 0.0
     return 1 - (len(set(words)) / len(words))
 
-
 # Per-example results file
 per_example_file = "results_per_example.csv"
 
