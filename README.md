@@ -1,5 +1,7 @@
 # llama2-qlora-finetune
-End-to-end QLoRA fine-tuning pipeline for LlamA-2-7b-Chat, including dataset cleaning, prompt construction, PEFT configuration, supervised fine-tuning, and evaluation.
+Implementation of a task-specific QLoRA supervised fine-tuning pipeline for LLaMA-2-7B-Chat, developed for an independent study on structured cover letter generation.
+
+note: readme not finalized
 
 ## Project Context
 This repository contains the code and experiments from my Independent Study at Baruch College (Fall 2025) in collaboration with the Machine Learning & Data Science Club and Math Department.
