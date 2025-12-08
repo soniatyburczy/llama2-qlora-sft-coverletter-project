@@ -36,6 +36,100 @@ These weaknesses, along with Llama-2-7b's strengths, make it an excellent candid
 The chat model was chosen because instruction-tuned models handle structured prompts more reliably, which is important for the task of generating a cover letter
 from a resume and job description.
 
+## Getting Started
+Before running any scripts in this repository, you must update the directory paths.
+The training, evaluation, and metrics scripts were written for my own workflow (Kaggle + local machine), so the file locations will not match your environment by default.
+
+Additionally, test.py includes a variable,
+```
+MERGED_PATH = "where merged model lives"
+```
+but the model is not merged within this script.
+
+This is intentional: the project was run in separate stages, and the merged model was created externally (on Kaggle) and then pushed to Hugging Face during experimentation.
+
+To reproduce the evaluation pipeline, you must merge the LoRA adapters yourself.
+
+**1. Merging LoRA Adapters**
+
+```train.py``` saves only the LoRA adapter weights, not a full standalone model.
+To run evaluation, merge the adapters into the base model using:
+```
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+
+base_model_name = "meta-llama/Llama-2-7b-chat-hf"
+adapter_model_name = "path/to/your/lora_adapter"
+
+# Load base model and tokenizer
+tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    base_model_name,
+    device_map="auto",
+    torch_dtype=torch.float16
+)
+
+# Load and apply LoRA adapters
+model = PeftModel.from_pretrained(model, adapter_model_name)
+
+# Merge LoRA weights into the base model
+model = model.merge_and_unload()
+
+# Save merged model
+model.save_pretrained("merged_model")
+tokenizer.save_pretrained("merged_model")
+```
+
+Once merged, update
+```
+MERGED_PATH = "merged_model"
+```
+in ```test.py```.
+
+### Hardware Requirements
+**Tested Setup (what this project actually used)**
+* **GPU**: NVIDIA T4
+* **VRAM**: 16 GB
+* **Training time**: ~1-2 hours for 4 epochs
+* **Batch size**: 1
+* **Quantization**: 8-bit (NF4 double quantization)
+
+Any GPU with ~16GB VRAM should be sufficient.
+Performance and memory usage will vary based on quantization settings and gradient accumulation.
+
+### Environment Setup
+**1) Create environment:**
+
+```
+conda create -n llama-qlora python=3.10
+conda activate llama-qlora
+```
+
+**2) Install core dependencies:**
+   
+```pip install torch transformers datasets accelerate peft bitsandbytes```
+
+**4) Install evaluation dependencies:**
+   
+```pip install evaluate bert-score rouge-score pandas tqdm```
+
+### Recommended Run Order
+train.py → merge LoRA adapters → test.py → clean.py -> metrics.py
+
+The ```scripts/``` directory contains several small utilities.
+The scripts/ directory contains several optional utilities used during experimentation.
+These are not required to reproduce the main training/evaluation pipeline, except for ```clean.py```.
+
+```clean.py``` is the preprocessing step used in my evaluation pipeline;
+if you want to reproduce the results reported in this repository, I recommend running it before computing metrics.
+
+**Helper Scripts**
+* ```clean.py``` — Removes the prompt section and outputs only the cover letter text (recommended for evaluation).
+* ```filter.py``` — Filters samples based on cover-letter length (optional exploratory tool).
+* Other scripts (```compute.py```,```plot.py```) — Useful for analysis but not part of the main pipeline.
+
+Make sure to update all directory paths (model locations, merged model path, and CSV filenames) before running any script.
+
 ## Pipeline Setup
 
 This project implements a full supervised fine-tuning (SFT) workflow using QLoRA.  
@@ -44,14 +138,33 @@ The pipeline consists of the following major components:
 ### 1. Dataset Loading & Cleaning
 
 ### 2. Prompt Schema Design
-Each sample is converted into a consistent, structured prompt with the following layout:
+Each sample is converted into a structured prompt with the following layout:
 
+```
+base_prompt = (
+  "### Job Description\n"
+  f"Job Title: {ex.get('Job Title','')}\n"
+  f"Company: {ex.get('Hiring Company','')}\n"
+  f"Preferred Qualifications: {ex.get('Preferred Qualifications','')}\n\n"
+
+  "### Applicant Resume\n"
+  f"Name: {ex.get('Applicant Name','')}\n"
+  f"Current Experience: {ex.get('Current Working Experience','')}\n"
+  f"Past Experience: {ex.get('Past Working Experience','')}\n"
+  f"Skills: {ex.get('Skillsets','')}\n"
+  f"Qualifications: {ex.get('Qualifications','')}\n\n"
+
+  "### Cover Letter\n"
+  "Using the information above, write a professional, personalized cover letter."
+)
+```
+  
 ## Model Performance Summary
 
-## Qualitative Examples
-### 1. Short-Form Cover Letter
+### Qualitative Anaylsis
+**1. Short-Form Cover Letter**
 
-### 2. Long-Form Cover Letter
+**2. Long-Form Cover Letter**
 ```text
 ### Job Description
 Job Title:  Data Scientist
@@ -93,7 +206,6 @@ Thank you for considering my application. I look forward to discussing my qualif
 Sincerely,
 John Smith
 ```
-0.57 Rougue,0.95 bert precision 0.94 bert recall 0.95 bert f1
 
 <br>
 
@@ -116,11 +228,14 @@ Sincerely,
 John Smith
 ```
 
+## Quantitative Anaylsis
+
+
 ## Dataset Challenges & Limitations
 Many target examples (~10.2%) in the dataset are low-quality and appear to be AI-generated.
 These samples provide weak supervision because they fail to model the structure or grounding required for a personalized cover letter.
 
-**Input Fields (Job + Resume):
+**Input Fields (Job + Resume):**
 ```text
 Job Title: Machine Learning Engineer
 Company: IBM
@@ -133,28 +248,24 @@ Skills: Python, Tensorflow, Keras, Machine Learning
 Qualifications: PhD in Computer Science
 ```
 
-**Cover Letter:
+**Cover Letter:**
 ```text
 "I am a skilled Machine Learning Engineer with a PhD in Computer Science. 
 have previous experience as a Software Engineer at Facebook and am currently working at Google.
 My skillset includes Python, Tensorflow, Keras, and machine learning.
 I am excited about this opportunity and believe I would be a great fit for your team."
 ```
-This supervision example is problematic for several reasons:
+This supervision example is problematic for several reasons.
+
 1. The target text is generic and ungrounded
 It does not reference:
-* IBM
 * job-specific requirements
 * role expectations
-* the resume fields in any meaningful way
-It reads like a template generated without awareness of the input structure.
 
 2. It lacks structural consistency.
-A high-quality cover letter should contain:
-* a tailored introduction
-* justification for fit based on both sides (job + resume)
-* role-specific alignment
-* a coherent closing
+This is a paragraph, not a cover letter. There is no:
+* introduction
+* conclusion
 
 Beyond low-quality target texts, several samples include incorrectly formatted input fields.  
 A common problem is the collapse of multi-line or bullet-list job qualifications into a single unstructured line.  
