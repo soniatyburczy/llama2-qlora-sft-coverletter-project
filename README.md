@@ -162,9 +162,59 @@ base_prompt = (
 ## Model Performance Summary
 
 ### Qualitative Anaylsis
-**1. Short-Form Cover Letter**
+#### 1. Short-Form Cover Letter ####
+Prompt
+```text
+### Job Description
+Job Title: AI Engineer
+Company: Facebook
+Preferred Qualifications: MSc in AI
 
-**2. Long-Form Cover Letter**
+### Applicant Resume
+Name: Eleanor Brown
+Current Experience: AI Engineer at Amazon for 3 years
+Past Experience: Data Scientist at Microsoft for 4 years
+Skills: Python, R, SQL, Machine Learning, Deep Learning, Artificial Intelligence
+Qualifications: MSc in AI
+
+### Cover Letter
+Using the information above, write a professional, personalized cover letter.
+```
+
+<br>
+
+Base Model Output (Llama-2-7b Chat)
+* 
+```text
+Dear Hiring Manager,
+
+I am writing to express my strong interest in the AI Engineer position at Facebook. As an experienced AI Engineer with a passion for developing innovative solutions, I am confident that I would be a valuable addition to your team.
+
+With over 5 years of experience in the field, I have honed my skills in Python, R, SQL, Machine Learning, Deep Learning, and Artificial Intelligence. My most recent role at Amazon has given me the opportunity to work on complex projects, including developing and deploying AI models for customer service and personalization. I have also had the chance to collaborate with cross-functional teams, including data scientists, software engineers, and product managers, to deliver high-impact solutions.
+
+I am particularly drawn to Facebook's commitment to advancing the field of AI and using it to positively impact society. I share this vision and believe that my skills and experience make me well-suited to contribute to this effort. I am excited at the prospect of joining a team of talented professionals who are dedicated to pushing the boundaries of what is possible with AI.
+
+In addition to my technical skills, I possess excellent communication and collaboration skills, which have been essential in working with stakeholders and team members to drive projects forward. I am also a strong problem-solver and have a proven track record of breaking down complex problems into manageable parts and developing creative solutions.
+
+Thank you for considering my application. I would be thrilled to bring my skills and experience to Facebook and contribute to the company's mission of advancing the field of AI.
+
+Sincerely,
+Eleanor Brown
+```
+
+<br>
+
+Fine-Tuned Model Output
+*
+```text
+I am excited to apply for the AI Engineer position at Facebook. I have a Master's degree in AI and have been working in the field for 7 years. I am proficient in Python, R, SQL, and have a deep understanding of machine learning and deep learning algorithms. I am confident that my skills and experience make me a strong candidate for this role. I am looking forward to the opportunity to contribute to Facebook's AI initiatives. Thank you for considering my application.
+
+Sincerely,
+Eleanor Brown
+```
+
+#### 2. Long-Form Cover Letter ####
+Prompt
 ```text
 ### Job Description
 Job Title:  Data Scientist
@@ -188,7 +238,7 @@ Using the information above, write a professional, personalized cover letter.
 ```
 <br>
 
-**Base Model Output (Llama-2-7b Chat)**
+Base Model Output (Llama-2-7b Chat)
 * Generic phrasing (“I am excited to apply…”)
 * Minimal use of job-specific details
 * Skill mentions are correct but shallow and not tied to responsibilities
@@ -209,7 +259,7 @@ John Smith
 
 <br>
 
-**Fine-Tuned Model Output**
+Fine-Tuned Model Output
 * Incorporates concrete resume details (large datasets, dashboards, reports)
 * References job-required tools (SQL, Python, Tableau)
 * Stronger narrative of applicant/job fit
