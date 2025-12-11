@@ -1,5 +1,25 @@
 # llama2-qlora-finetune
-Implementation of a task-specific QLoRA supervised fine-tuning pipeline for LLaMA-2-7B-Chat, developed for an independent study on structured cover letter generation.
+Implementation of a task-specific **QLoRA supervised fine-tuning** pipeline for **LLaMA-2-7B-Chat**, developed for an independent study on structured cover letter generation.
+
+## Table of Contents
+- [Project Context](#project-context)
+- [Model Access](#model-access)
+- [Model Choice](#model-choice)
+- [Getting Started](#getting-started)
+- [Training Pipeline](#training-pipeline)
+  - [Load Base Model & Configure QLoRA](#load-base-model--configure-qlora)
+  - [Dataset Cleaning & Normalization](#dataset-cleaning--normalization)
+  - [Prompt Schema Construction](#prompt-schema-construction)
+  - [Tokenization & Data Collation](#tokenization--data-collation)
+  - [Supervised Fine-Tuning](#supervised-fine-tuning)
+- [Evaluation Pipeline](#evaluation-pipeline)
+- [Model Performance Summary](#model-performance-summary)
+  - [Qualitative Analysis](#qualitative-analysis)
+  - [Quantitative Analysis](#quantitative-analysis)
+- [Dataset Challenges & Limitations](#dataset-challenges--limitations)
+- [Results Summary](#results-summary)
+- [Future Work](#future-work)
+- [Conclusion](#conclusion)
 
 ## Project Context
 This repository contains the code and experiments from my Independent Study at Baruch College (Fall 2025) in collaboration with the Machine Learning & Data Science Club and Math Department.
@@ -15,8 +35,13 @@ The code in this repository documents the full experimentation pipeline, includi
 Although this repository is primarily a research record, all code is fully open and can be adapted or reused for your own fine-tuning experiments.
 Feel free to explore, modify, or extend the pipeline as needed!
 
+## Model Access
+The fine-tuned LoRA adapters are available on Hugging Face:
+
+[![HuggingFace Model](https://img.shields.io/badge/🤗-HuggingFace%20Model-orange.svg)](https://huggingface.co/czszt/llama2-7b-cover-letter-qlora)
+
 ## Model Choice
-Llama-2-7b Chat was selected as the base model for various reasons.
+**LLaMA-2-7B Chat** was selected as the base model for various reasons.
 A major consideration was balancing memory usage, training stability, and generation quality.
 The 7B parameter size sits in an ideal middle ground:
 * Large enough to produce coherent, professional writing suitable for cover letters
@@ -24,7 +49,7 @@ The 7B parameter size sits in an ideal middle ground:
 
 Since the goal here is to improve a base model's performance on generating cover letters, an important consideration
 is that the model selected should not already be so good at the task that fine-tuning provides no real benefit. 
-LLama-2-7b-Chat is a strong general-purpose instruction-following model, 
+**LLaMA-2-7B Chat** is a strong general-purpose instruction-following model, 
 but it is not specialized for structured, multi-field cover letter generation. Out of the box, it tends to:
 * produce generic, template-like responses
 * miss important details from the job description or resume
@@ -32,7 +57,7 @@ but it is not specialized for structured, multi-field cover letter generation. O
 * hallucinate experiences or rewrite the applicant's background incorrectly
 * ignore or partially use key fields (skills, past experience, required qualifications)
 
-These weaknesses, along with Llama-2-7b's strengths, make it an excellent candidate for fine-tuning.
+These weaknesses make it an excellent candidate for finetuning.
 The chat model was chosen because instruction-tuned models handle structured prompts more reliably, which is important for the task of generating a cover letter
 from a resume and job description.
 
@@ -130,40 +155,134 @@ if you want to reproduce the results reported in this repository, I recommend ru
 
 Make sure to update all directory paths (model locations, merged model path, and CSV filenames) before running any script.
 
-## Pipeline Setup
+## Training Pipeline
 
-This project implements a full supervised fine-tuning (SFT) workflow using QLoRA.  
-The pipeline consists of the following major components:
+This project uses a full **Supervised Fine-Tuning (SFT)** workflow with **QLoRA** to adapt **LLaMA-2-7B-Chat** for structured cover-letter generation.
+This section describes the complete training workflow.
 
-### 1. Dataset Loading & Cleaning
-
-### 2. Prompt Schema Design
-Each sample is converted into a structured prompt with the following layout:
+### Load Base Model & Configure QLoRA
+The base model (LLaMA-2-7B-Chat) is loaded in **8-bit NF4** quantization using ```bitsandbytes``` to reduce memory requirements.
+A LoRA adapter (rank=8, α=16) is applied to the attention projection layers:
 
 ```
-base_prompt = (
-  "### Job Description\n"
-  f"Job Title: {ex.get('Job Title','')}\n"
-  f"Company: {ex.get('Hiring Company','')}\n"
-  f"Preferred Qualifications: {ex.get('Preferred Qualifications','')}\n\n"
-
-  "### Applicant Resume\n"
-  f"Name: {ex.get('Applicant Name','')}\n"
-  f"Current Experience: {ex.get('Current Working Experience','')}\n"
-  f"Past Experience: {ex.get('Past Working Experience','')}\n"
-  f"Skills: {ex.get('Skillsets','')}\n"
-  f"Qualifications: {ex.get('Qualifications','')}\n\n"
-
-  "### Cover Letter\n"
-  "Using the information above, write a professional, personalized cover letter."
-)
+target_modules = ["q_proj", "v_proj"]
 ```
+
+**Why QLoRA?**
+* Makes 7B models trainable on a single T4 GPU
+* Maintains performance close to FP16
+* Only a small number of parameters are updated, improving training stability on a small dataset
+
+### Dataset Cleaning & Normalization
+The raw dataset includes noise, inconsistent formatting, and many generic/AI-generated target texts.
+A custom cleaning pipeline was implemented to:
+* extract valid cover-letter segments
+* remove artifacts (e.g., “### Sample”)
+* normalize whitespace and punctuation
+* append EOS tokens to enforce clean sequence endings
+* truncate sequences to a maximum length of 768 tokens
+
+This step significantly reduces hallucinations and improves structural consistency.
+
+### Prompt Schema Construction
+Each sample is transformed into a structured prompt with three sections:
+1) Job Description
+2) Applicant Resume
+3) Instruction Block
+
+Example schema:
+```text
+### Job Description
+Job Title: …
+Company: …
+Preferred Qualifications: …
+
+### Applicant Resume
+Name: …
+Current Experience: …
+Past Experience: …
+Skills: …
+Qualifications: …
+
+### Cover Letter
+Using the information above, write a professional, personalized cover letter.
+```
+
+LLaMA-style models are highly sensitive to prompt formatting.
+During experimentation, I found that the more structured and consistent the prompt layout, the more reliably the model:
+* grounds its outputs in the provided fields
+* avoids hallucinating qualifications
+* maintains the correct letter format (intro → body → closing)
+* handles both short and long-form inputs
+
+Because of this, the final schema was intentionally designed to be rigid and repeatable across all samples.
+The model learns best when every example follows the same pattern, so enforcing a strict template significantly improved stability and output quality.
+
+### Tokenization & Data Collation
+Prompts and target letters are concatenated into a single causal-LM sequence:
+* right padding (standard for LLaMA-2 models)
+* EOS tokens appended
+* batching handled via DataCollatorForLanguageModeling
+* causal masking applied automatically
+
+### Supervised Fine-Tuning
+Training configuration:
+* **Epochs**: 4
+* **Batch size**: 1
+* **Gradient accumulation**: 4
+* **Precision**: FP16
+* **Optimizer**: paged AdamW (32-bit)
+* **Quantization**: 8-bit NF4
   
+This setup balances GPU memory limits and training stability.
+
+**Why these choices?**
+* **4 epochs** — LLaMA-2 models typically converge within 1–3 epochs on instruction-tuning tasks, but LoRA updates only a small subset of parameters. With a relatively small dataset, an additional epoch helps the adapter layers learn the structured prompt format more effectively while still remaining conservative enough to avoid overfitting.
+* **Batch size = 1 with gradient accumulation = 4** — This simulates an effective batch size of 4 while fitting the model into a 16GB T4 GPU.
+* **8-bit NF4 quantization** — Reduces memory usage enough to train a 7B model on limited hardware with minimal quality degradation. NF4 provides better precision than standard int8 quantization for LLaMA models.
+* **FP16 training** — A good trade-off between speed and stability; keeps memory low while avoiding the instability that can occur with full FP32 training.
+*  **Paged AdamW** — The optimizer used by QLoRA to efficiently handle quantized weight offloading and reduce VRAM pressure.
+
+After training, the LoRA adapters are merged into the base **LLaMA-2-7B-Chat** model for evaluation and inference. This repository contains **only adapter weights**, so merging must be done externally before running test.py or computing metrics.
+
+## Evaluation Pipeline
+The evaluation workflow compares the fine-tuned model against the base **LLaMA-2-7B-Chat model** on the test split of the dataset.
+It consists of three stages:
+
+### Generate Predictions
+```test.py``` loads:
+* the base model (```meta-llama/LLaMA-2-7B-Chat-hf```)
+* the merged fine-tuned model
+  
+Each example in the test set is formatted using the same structured prompt schema used during training.
+For every prompt, both models generate a cover letter.
+
+The outputs are saved to ```eval.csv```:
+```
+prompt | ground_truth | base_output | fine_tuned_output
+```
+
+### Clean Outputs (Optional but Recommended)
+```clean.py``` removes the prompt section from each row and normalizes text formatting so that metrics are computed only on the generated cover-letter content.
+
+### Compute Metrics
+```metrics.py``` computes the following:
+* **ROUGE-L** — structural alignment & grounding
+* **BERTScore (P/R/F1)** — semantic similarity
+* **Repetition Ratio** — proxy for hallucinations / template stability
+  
+Two output files are produced:
+* ```results_per_example.csv``` — per-example metric values
+* ```eval_summary.csv``` — aggregated metric means and standard deviations
+  
+These metrics were used to generate the quantitative results reported in this repository.
+
 ## Model Performance Summary
 
-### Qualitative Anaylsis
+### Qualitative Analysis
+
 #### 1. Short-Form Cover Letter ####
-Prompt
+**Prompt**
 ```text
 ### Job Description
 Job Title: AI Engineer
@@ -183,8 +302,12 @@ Using the information above, write a professional, personalized cover letter.
 
 <br>
 
-Base Model Output (Llama-2-7b Chat)
-* 
+**Base Model Output (LLaMA-2-7B-Chat)**
+* Generic template-like phrasing  
+* Does not ground itself in the provided résumé fields  
+* **States “over 5 years of experience,” ignoring the explicit 3 + 4 years given**  
+* Reflects heuristic templating rather than actual reasoning over the inputs
+   
 ```text
 Dear Hiring Manager,
 
@@ -204,8 +327,11 @@ Eleanor Brown
 
 <br>
 
-Fine-Tuned Model Output
-*
+**Fine-Tuned Model Output**
+* More concise and structured
+* Uses input fields accurately
+* **Correctly infers 7 years of combined experience (3 + 4)**
+* Avoids unnecessary elaboration or hallucination
 ```text
 I am excited to apply for the AI Engineer position at Facebook. I have a Master's degree in AI and have been working in the field for 7 years. I am proficient in Python, R, SQL, and have a deep understanding of machine learning and deep learning algorithms. I am confident that my skills and experience make me a strong candidate for this role. I am looking forward to the opportunity to contribute to Facebook's AI initiatives. Thank you for considering my application.
 
@@ -214,7 +340,8 @@ Eleanor Brown
 ```
 
 #### 2. Long-Form Cover Letter ####
-Prompt
+
+**Prompt**
 ```text
 ### Job Description
 Job Title:  Data Scientist
@@ -238,7 +365,7 @@ Using the information above, write a professional, personalized cover letter.
 ```
 <br>
 
-Base Model Output (Llama-2-7b Chat)
+**Base Model Output (LLaMA-2-7B-Chat)**
 * Generic phrasing (“I am excited to apply…”)
 * Minimal use of job-specific details
 * Skill mentions are correct but shallow and not tied to responsibilities
@@ -259,7 +386,7 @@ John Smith
 
 <br>
 
-Fine-Tuned Model Output
+**Fine-Tuned Model Output**
 * Incorporates concrete resume details (large datasets, dashboards, reports)
 * References job-required tools (SQL, Python, Tableau)
 * Stronger narrative of applicant/job fit
@@ -278,7 +405,7 @@ Sincerely,
 John Smith
 ```
 
-## Quantitative Anaylsis
+### Quantitative Analysis
 
 
 ## Dataset Challenges & Limitations
@@ -326,4 +453,31 @@ experience mentoring other analysts excellent written communication skills excel
 
 Unfortunately, not many cover letter datasets exist publicly, making this one of the only options despite its various issues.
 
-For future experimentation, further dataset cleaning could improve results, specifically the large increase in variability in quality between generated cover letters.
+## Future Work
+Several directions could meaningfully improve the model’s performance and stability:
+
+**1. Higher-Quality Training Data**  
+The largest bottleneck is noisy supervision. A curated or human-edited dataset would likely improve grounding, reduce hallucinations, and produce more consistent formatting.
+
+**2. Expand Model Size or Architecture**  
+Fine-tuning LLaMA-2-13B or LLaMA-3-8B may improve fluency, coherence, and long-form structure, especially for complex job descriptions.
+
+**3. Classifier-Assisted Data Filtering**  
+A lightweight classifier could be trained to identify well-structured, grounded cover-letter examples.  
+Using this alongside the generator—either to filter training data or score model outputs—could significantly improve consistency without requiring large-scale alignment pipelines.
+
+## Conclusion
+This project demonstrates that **parameter-efficient fine-tuning (QLoRA)** can meaningfully improve **LLaMA-2-7B-Chat's** performance on a structured generation task—even under severe hardware and dataset constraints.
+
+Despite noisy supervision and limited training data, the fine-tuned model:
+* produces more grounded cover letters
+* uses job and resume fields more accurately
+* maintains a consistent format
+* reduces hallucinations and repetition
+  
+There is still room for improvement through:
+* higher-quality or human-curated datasets
+* additional structural constraints during training
+* larger models (LLaMA-2-13B or LLaMA-3 variants)
+  
+This repository serves both as a full experimentation record and as a reproducible template for training specialized QLoRA models on modest hardware.
