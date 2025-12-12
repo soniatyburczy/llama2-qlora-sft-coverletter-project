@@ -14,8 +14,8 @@ Implementation of a task-specific **QLoRA supervised fine-tuning** pipeline for 
   - [Supervised Fine-Tuning](#supervised-fine-tuning)
 - [Evaluation Pipeline](#evaluation-pipeline)
 - [Model Performance Summary](#model-performance-summary)
-  - [Qualitative Analysis](#qualitative-analysis)
   - [Quantitative Analysis](#quantitative-analysis)
+  - [Qualitative Analysis](#qualitative-analysis)
 - [Dataset Challenges & Limitations](#dataset-challenges--limitations)
 - [Results Summary](#results-summary)
 - [Future Work](#future-work)
@@ -38,7 +38,7 @@ Feel free to explore, modify, or extend the pipeline as needed!
 ## Model Access
 The fine-tuned LoRA adapters are available on Hugging Face:
 
-[![HuggingFace Model](https://img.shields.io/badge/🤗-HuggingFace%20Model-orange.svg)](https://huggingface.co/czszt/llama2-7b-cover-letter-qlora)
+[![HuggingFace Model](https://img.shields.io/badge/🤗-HuggingFace%20Model-orange.svg)](https://huggingface.co/czszt/llama2-7b-qlora-cover-letter)
 
 ## Model Choice
 **LLaMA-2-7B Chat** was selected as the base model for various reasons.
@@ -62,6 +62,12 @@ The chat model was chosen because instruction-tuned models handle structured pro
 from a resume and job description.
 
 ## Getting Started
+Install all required Python dependencies using:
+
+```
+pip install -r requirements.txt
+```
+
 Before running any scripts in this repository, you must update the directory paths.
 The training, evaluation, and metrics scripts were written for my own workflow (Kaggle + local machine), so the file locations will not match your environment by default.
 
@@ -279,9 +285,52 @@ These metrics were used to generate the quantitative results reported in this re
 
 ## Model Performance Summary
 
-### Qualitative Analysis
+### Quantitative Analysis
+**Metrics interpretation.**  
+ROUGE-L captures structural overlap and grounding to the reference letter, while BERTScore reflects semantic similarity independent of exact phrasing. Repetition ratio measures redundancy and template-like behavior; lower values indicate more diverse, less repetitive generations. All metrics are computed per example and aggregated across the test set.
 
-#### 1. Short-Form Cover Letter ####
+**Full Test Set**
+| Model        | ROUGE-L (F1) | BERT-P | BERT-R | BERT-F1 | Repetition Ratio |
+|--------------|-------------:|-------:|-------:|--------:|-----------------:|
+| Base Model   | 0.314        | 0.884  | 0.920  | 0.901   | 0.428 |
+| Fine-Tuned   | **0.519**    | **0.927** | **0.939** | **0.933** | **0.361** |
+
+**Stability & distribution (Full Test Set)**
+
+| Model        | ROUGE-L Std | ROUGE-L Median | BERT-F1 Std | BERT-F1 Median | Repetition Ratio Std |
+|--------------|-------------:|---------------:|------------:|---------------:|---------------------:|
+| Base Model   | 0.072        | 0.323          | 0.017       | 0.900          | 0.037 |
+| Fine-Tuned   | 0.149        | **0.495**      | 0.018       | **0.933**      | 0.075 |
+
+**Effect of output length on ROUGE-L**
+ROUGE-L scores are plotted against generated cover-letter length for the fine-tuned model in the figure above. Each point corresponds to a single test example. 
+
+The plot reveals a clear difference in variance by length. Short-form outputs (≈300–600 characters) exhibit substantially higher dispersion in ROUGE-L scores, while longer outputs cluster more tightly. This behavior reflects a known limitation of overlap-based metrics: for very short texts, small lexical differences or noisy reference targets can lead to disproportionately high or low scores.
+
+![ROUGE-L vs Prediction Length](data/graphs/rougeL-finetuned.png)
+*ROUGE-L scores plotted against generated cover-letter length for the fine-tuned model.*
+
+
+**Relative Improvements (Fine-Tuned vs Base):**
+- ROUGE-L: **+65%**
+- BERT-F1: **+3.5%**
+- Repetition Ratio: **−15.5%**
+
+#### 2. Long-Form Cover Letters (≥ 500 chars)
+
+| Model        | ROUGE-L (F1) | BERT-P | BERT-R | BERT-F1 | Repetition Ratio |
+|--------------|-------------:|-------:|-------:|--------:|-----------------:|
+| Base Model   | 0.355        | 0.904  | 0.919  | 0.911   | 0.429 |
+| Fine-Tuned   | **0.507**    | **0.935** | **0.933** | **0.934** | **0.397** |
+
+**Relative Improvements:**
+- ROUGE-L: **+43%**
+- BERT-F1: **+2.5%**
+- Repetition Ratio: **−7.4%**
+
+### Qualitative Analysis
+####1. Short-Form Cover Letter
+
 **Prompt**
 ```text
 ### Job Description
@@ -405,9 +454,6 @@ Sincerely,
 John Smith
 ```
 
-### Quantitative Analysis
-
-
 ## Dataset Challenges & Limitations
 Many target examples (~10.2%) in the dataset are low-quality and appear to be AI-generated.
 These samples provide weak supervision because they fail to model the structure or grounding required for a personalized cover letter.
@@ -452,6 +498,15 @@ experience mentoring other analysts excellent written communication skills excel
 ```
 
 Unfortunately, not many cover letter datasets exist publicly, making this one of the only options despite its various issues.
+
+## Results Summary
+
+Overall, the fine-tuned model demonstrates:
+
+* Substantial improvements in structural alignment (≈65% relative ROUGE-L gain)
+* Stronger semantic grounding across all outputs
+* Reduced repetition and template-driven generation
+* Stable gains on long-form, realistic cover letters
 
 ## Future Work
 Several directions could meaningfully improve the model’s performance and stability:
