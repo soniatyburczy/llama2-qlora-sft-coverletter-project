@@ -23,7 +23,7 @@ Implementation of a task-specific **QLoRA supervised fine-tuning** pipeline for 
 
 ## Project Context
 This repository contains the code and experiments from my Independent Study at Baruch College (Fall 2025) in collaboration with the Machine Learning & Data Science Club and Math Department.
-The goal was to fine-tune a model for structured cover letter generation to be used in a chrome extension.
+The goal was to fine-tune a model for structured cover letter generation, intended for integration into a Chrome extension.
 
 The code in this repository documents the full experimentation pipeline, including:
 - dataset analysis and cleaning
@@ -57,7 +57,7 @@ but it is not specialized for structured, multi-field cover letter generation. O
 * hallucinate experiences or rewrite the applicant's background incorrectly
 * ignore or partially use key fields (skills, past experience, required qualifications)
 
-These weaknesses make it an excellent candidate for finetuning.
+These weaknesses make it an excellent candidate for fine-tuning.
 The chat model was chosen because instruction-tuned models handle structured prompts more reliably, which is important for the task of generating a cover letter
 from a resume and job description.
 
@@ -140,7 +140,7 @@ conda activate llama-qlora
    
 ```pip install torch transformers datasets accelerate peft bitsandbytes```
 
-**4) Install evaluation dependencies:**
+**3) Install evaluation dependencies:**
    
 ```pip install evaluate bert-score rouge-score pandas tqdm```
 
@@ -295,6 +295,13 @@ ROUGE-L captures structural overlap and grounding to the reference letter, while
 | Base Model   | 0.314        | 0.884  | 0.920  | 0.901   | 0.428 |
 | Fine-Tuned   | **0.519**    | **0.927** | **0.939** | **0.933** | **0.361** |
 
+![Mean ROUGE-L F1 on the full test split](data/graphs/mean-ROUGE-L-F1-bar.png)
+
+![Mean BERTScore Precision, Recall, and F1 on the full test split](data/graphs/mean-BERTScore-bar.png)
+
+*Mean ROUGE-L F1 and BERTScore (Precision, Recall, and F1) on the full test split for the base and fine-tuned models. Axes are cropped to the range of observed values for readability.*
+
+
 **Stability & distribution (Full Test Set)**
 
 | Model        | ROUGE-L Std | ROUGE-L Median | BERT-F1 Std | BERT-F1 Median | Repetition Ratio Std |
@@ -302,21 +309,23 @@ ROUGE-L captures structural overlap and grounding to the reference letter, while
 | Base Model   | 0.072        | 0.323          | 0.017       | 0.900          | 0.037 |
 | Fine-Tuned   | 0.149        | **0.495**      | 0.018       | **0.933**      | 0.075 |
 
-**Effect of output length on ROUGE-L**
-ROUGE-L scores are plotted against generated cover-letter length for the fine-tuned model in the figure above. Each point corresponds to a single test example. 
-
-The plot reveals a clear difference in variance by length. Short-form outputs (≈300–600 characters) exhibit substantially higher dispersion in ROUGE-L scores, while longer outputs cluster more tightly. This behavior reflects a known limitation of overlap-based metrics: for very short texts, small lexical differences or noisy reference targets can lead to disproportionately high or low scores.
-
-![ROUGE-L vs Prediction Length](data/graphs/rougeL-finetuned.png)
-*ROUGE-L scores plotted against generated cover-letter length for the fine-tuned model.*
-
-
 **Relative Improvements (Fine-Tuned vs Base):**
 - ROUGE-L: **+65%**
 - BERT-F1: **+3.5%**
 - Repetition Ratio: **−15.5%**
 
-#### 2. Long-Form Cover Letters (≥ 500 chars)
+Overall, the substantially higher median ROUGE-L alongside increased variance indicates that improvements are consistent across most examples rather than driven by a small number of outliers. The higher variance reflects greater flexibility in output length and structure, not instability in model behavior. In particular, evaluation of very short cover letters is challenging: in several cases, the fine-tuned model produces outputs that are qualitatively stronger than the reference text, despite receiving lower overlap-based scores. For this reason, qualitative analysis is emphasized for short-form outputs.
+
+**Effect of output length on ROUGE-L**
+
+![ROUGE-L vs output length for the fine-tuned model](data/graphs/mean-ROUGE-L-F1-finetuned.png)
+
+The plot reveals a clear difference in variance by length. Short-form outputs (≈300–600 characters) exhibit substantially higher dispersion in ROUGE-L scores, while longer outputs cluster more tightly. This behavior reflects a known limitation of overlap-based metrics: for very short texts, small lexical differences or noisy reference targets can lead to disproportionately high or low scores.
+
+These observations motivate a separate analysis of long-form cover letters (≥500 characters), which better reflect realistic usage and reduce metric instability.
+
+
+**Long-Form Cover Letters (≥ 500 characters)**
 
 | Model        | ROUGE-L (F1) | BERT-P | BERT-R | BERT-F1 | Repetition Ratio |
 |--------------|-------------:|-------:|-------:|--------:|-----------------:|
@@ -327,6 +336,8 @@ The plot reveals a clear difference in variance by length. Short-form outputs (�
 - ROUGE-L: **+43%**
 - BERT-F1: **+2.5%**
 - Repetition Ratio: **−7.4%**
+
+Because long-form cover letters require sustained structure and grounding, these results provide a more reliable estimate of real-world performance than aggregate metrics alone.
 
 ### Qualitative Analysis
 ####1. Short-Form Cover Letter
@@ -503,10 +514,10 @@ Unfortunately, not many cover letter datasets exist publicly, making this one of
 
 Overall, the fine-tuned model demonstrates:
 
-* Substantial improvements in structural alignment (≈65% relative ROUGE-L gain)
-* Stronger semantic grounding across all outputs
+* Substantial improvements in structural alignment (≈65% relative ROUGE-L gain on the full test set)
+* Consistent gains in semantic similarity, as measured by BERTScore, across all outputs
 * Reduced repetition and template-driven generation
-* Stable gains on long-form, realistic cover letters
+* Stable and reliable improvements on long-form, realistic cover letters (≈43% relative ROUGE-L gain for outputs ≥500 characters)
 
 ## Future Work
 Several directions could meaningfully improve the model’s performance and stability:
