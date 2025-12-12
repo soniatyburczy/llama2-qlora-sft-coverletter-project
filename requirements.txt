@@ -1,0 +1,11 @@
+torch
+transformers
+datasets
+accelerate
+peft
+bitsandbytes
+evaluate
+rouge-score
+bert-score
+pandas
+tqdm
