@@ -340,7 +340,7 @@ These observations motivate a separate analysis of long-form cover letters (≥5
 Because long-form cover letters require sustained structure and grounding, these results provide a more reliable estimate of real-world performance than aggregate metrics alone.
 
 ### Qualitative Analysis
-####1. Short-Form Cover Letter
+#### 1. Short-Form Cover Letter ####
 
 **Prompt**
 ```text
